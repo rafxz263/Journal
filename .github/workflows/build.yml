@@ -1,1 +1,52 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Kalau yang diupload ke repo cuma Journal.apk (sebenarnya ZIP source), ekstrak dulu
+      - name: Extract source if uploaded as zip
+        run: |
+          if [ ! -f settings.gradle.kts ]; then
+            for f in Journal.apk Journal.zip; do
+              if [ -f "$f" ]; then unzip -o "$f" && break; fi
+            done
+          fi
+          ls
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+      # Project butuh debug.keystore yang tidak ada di ZIP
+      - name: Create debug keystore
+        run: |
+          [ -f debug.keystore ] || keytool -genkeypair -v \
+            -keystore debug.keystore -storepass android \
+            -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Journal-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
 
